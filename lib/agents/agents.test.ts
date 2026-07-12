@@ -80,6 +80,8 @@ describe("runSessionAuditor", () => {
       conversation: managerInput.conversation,
     });
     expect(requests[0].prompt).toContain(managerInput.conversation);
+    expect(requests[0].prompt).toContain('"problems":[{"type":');
+    expect(requests[0].prompt).toContain('"verificationObserved":true');
     expect(requests[0].prompt.toLowerCase()).not.toContain("repository file contents");
   });
 });
@@ -115,6 +117,28 @@ describe("runQualityReviewer", () => {
     reusablePlaybook: { name: "Retry", content: "..." },
     coachingNotes: [],
   };
+
+  it("includes the previous review when checking a revision", async () => {
+    const { adapter, requests } = capture(createFixtureAdapter());
+    await runQualityReviewer(adapter, {
+      acceptanceCriteria: ["The improved prompt must be reusable."],
+      strictness: "medium",
+      audit,
+      recommendation,
+      previousReview: {
+        status: "revision_requested",
+        score: 55,
+        issues: [{ type: "missing_constraint", description: "Backoff values missing.", requiredAction: "Add concrete backoff values." }],
+        revisionTarget: "workflow_coach",
+        revisionInstructions: ["Add concrete backoff values."],
+      },
+    });
+    expect(requests[0].prompt).toContain("Previous reviewer decision");
+    expect(requests[0].prompt).toContain("Add concrete backoff values.");
+    expect(requests[0].prompt).toContain("do not claim required information is missing when it is present");
+    expect(requests[0].prompt).toContain('"issues":[{"type":"missing_constraint"');
+    expect(requests[0].prompt).toContain('"revisionInstructions":["specific correction"]');
+  });
 
   it("returns a revision request on the first review and approval on the second", async () => {
     const adapter = createFixtureAdapter();

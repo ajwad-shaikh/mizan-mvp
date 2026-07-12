@@ -1,4 +1,4 @@
-import type { SessionAudit, WorkflowRecommendation, Strictness } from "./types";
+import type { SessionAudit, WorkflowRecommendation, Strictness, QualityReview } from "./types";
 import type { AgencyPlan } from "./types";
 
 /**
@@ -67,7 +67,9 @@ export function buildSessionAuditorPrompt(input: SessionAuditorInput): string {
     "Conversation to diagnose:",
     input.conversation,
     "",
-    "Produce a SessionAudit: initialObjective, finalObjective, summary, userTurns, assistantTurns, correctiveTurns, requirementChanges[], strengths[], problems[], verificationObserved.",
+    "Return exactly this JSON shape (replace example values, preserve types and nested keys):",
+    '{"initialObjective":"string","finalObjective":"string","summary":"string","userTurns":0,"assistantTurns":0,"correctiveTurns":0,"requirementChanges":[{"turn":0,"change":"string","impact":"string"}],"strengths":["string"],"problems":[{"type":"string","severity":"low|medium|high","evidence":"string"}],"verificationObserved":true}',
+    "verificationObserved must be a boolean, not an object. problems must contain objects with type, severity, and evidence; use [] when there are no problems.",
   ].join("\n");
 }
 
@@ -109,7 +111,8 @@ export function buildWorkflowCoachPrompt(input: WorkflowCoachInput): string {
   }
   parts.push(
     "",
-    "Produce a WorkflowRecommendation: improvedPrompt, recommendedContextBundle[], recommendedWorkflow[], verificationPlan[], reusablePlaybook{name,content}, coachingNotes[].",
+    "Return exactly this JSON shape (replace example values, preserve types and nested keys):",
+    '{"improvedPrompt":"string","recommendedContextBundle":["path"],"recommendedWorkflow":[{"step":1,"action":"string","reason":"string"}],"verificationPlan":["string"],"reusablePlaybook":{"name":"string","content":"string"},"coachingNotes":["string"]}',
   );
   return parts.join("\n");
 }
@@ -127,10 +130,11 @@ export type QualityReviewerInput = {
   strictness: Strictness;
   audit: SessionAudit;
   recommendation: WorkflowRecommendation;
+  previousReview?: QualityReview;
 };
 
 export function buildQualityReviewerPrompt(input: QualityReviewerInput): string {
-  return [
+  const parts = [
     `Strictness: ${input.strictness}`,
     "",
     "Acceptance criteria to enforce:",
@@ -141,9 +145,22 @@ export function buildQualityReviewerPrompt(input: QualityReviewerInput): string 
     "",
     "Workflow recommendation under review:",
     JSON.stringify(input.recommendation, null, 2),
+  ];
+  if (input.previousReview) {
+    parts.push(
+      "",
+      "Previous reviewer decision and required changes:",
+      JSON.stringify(input.previousReview, null, 2),
+      "This is a revision review. Check whether each previous required action is now satisfied. Approve when it is. Be evidence-based and do not claim required information is missing when it is present in the recommendation.",
+    );
+  }
+  parts.push(
     "",
-    "Produce a QualityReview: status ('approved' or 'revision_requested'), score (0-100), issues[], revisionTarget (optional), revisionInstructions[] (required when requesting a revision).",
-  ].join("\n");
+    "Return exactly this JSON shape (preserve types and nested keys):",
+    '{"status":"approved","score":90,"issues":[],"revisionInstructions":[]}',
+    'If revision is genuinely required, return this complete shape: {"status":"revision_requested","score":55,"issues":[{"type":"missing_constraint","description":"specific evidence-based issue","requiredAction":"specific correction"}],"revisionTarget":"workflow_coach","revisionInstructions":["specific correction"]}.',
+  );
+  return parts.join("\n");
 }
 
 export type { AgencyPlan };

@@ -87,6 +87,18 @@ const healthyPlan = JSON.stringify({
   requiresRepositoryEvidence: false,
 });
 
+const coachSkippedPlan = JSON.stringify({
+  engagementSummary: "Audit without initial coaching.",
+  selectedAgents: [
+    { agent: "session_auditor", reason: "Reconstruct.", instructions: [] },
+    { agent: "quality_reviewer", reason: "Review the health recommendation.", instructions: [] },
+  ],
+  skippedAgents: [{ agent: "workflow_coach", reason: "Initially unnecessary." }],
+  acceptanceCriteria: ["The final recommendation must be actionable."],
+  requiresExternalResearch: false,
+  requiresRepositoryEvidence: false,
+});
+
 describe("runAgencyOrchestration", () => {
   it("approved path: composes a report and awaits approval", async () => {
     const rec = collector();
@@ -138,6 +150,25 @@ describe("runAgencyOrchestration", () => {
     expect(coachSteps.map((s) => s.version)).toEqual([1, 2]);
     const reviewerSteps = rec.steps.filter((s) => s.agentName === "quality_reviewer");
     expect(reviewerSteps.map((s) => s.version)).toEqual([1, 2]);
+  });
+
+  it("activates a skipped Workflow Coach when the reviewer targets it for revision", async () => {
+    const rec = collector();
+    const result = await runAgencyOrchestration({
+      adapter: scriptedAdapter({
+        agency_manager: [coachSkippedPlan],
+        session_auditor: [audit],
+        workflow_coach: [coach("activated")],
+        quality_reviewer: [revise, approve],
+      }),
+      recorder: rec,
+      engagement,
+    });
+
+    expect(result.outcome).toBe("awaiting_approval");
+    expect(result.revisions).toBe(1);
+    expect(rec.steps.filter((step) => step.agentName === "workflow_coach").map((step) => step.version)).toEqual([1]);
+    expect(result.report?.improvedPrompt).toContain("activated");
   });
 
   it("second rejection: stops before publication with no report", async () => {

@@ -156,7 +156,7 @@ export async function runAgencyOrchestration(args: RunOrchestrationArgs): Promis
   const coachInstructions = plan.selectedAgents.find((a) => a.agent === "workflow_coach")?.instructions;
 
   // 3. Workflow Coach v1, or a deterministic short health recommendation when skipped.
-  let coachVersion = 1;
+  let coachVersion = coachSelected ? 1 : 0;
   let recommendation: WorkflowRecommendation;
   if (coachSelected) {
     recommendation = (
@@ -190,6 +190,7 @@ export async function runAgencyOrchestration(args: RunOrchestrationArgs): Promis
           strictness: engagement.strictness,
           audit: audit ?? synthesizeAudit(engagement),
           recommendation,
+          previousReview: reviews[reviews.length - 1],
         }),
     );
     reviews.push(reviewResult.data);
@@ -203,9 +204,9 @@ export async function runAgencyOrchestration(args: RunOrchestrationArgs): Promis
       return { outcome: "awaiting_approval", plan, audit, recommendation, reviews, report, revisions };
     }
 
-    // revision_requested: only the selected Workflow Coach is revisable in this MVP.
+    // revision_requested: the Workflow Coach may be activated even if the manager initially skipped it.
     const revisionTarget = reviewResult.data.revisionTarget ?? "workflow_coach";
-    if (revisionTarget !== "workflow_coach" || !coachSelected) {
+    if (revisionTarget !== "workflow_coach") {
       return { outcome: "review_failed", plan, audit, recommendation, reviews, report: null, revisions };
     }
     if (revisions >= MAX_REVISIONS) {
